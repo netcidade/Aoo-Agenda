@@ -31,12 +31,33 @@ export const AVAILABLE_SERVICES: Service[] = [
   }
 ];
 
-export const MOCK_USER: User = {
-  id: 'u1',
-  name: 'Ana Silva',
-  email: 'ana.silva@exemplo.com',
-  phone: '(11) 99999-8888'
-};
+// Dados para simular a resposta da API do Google Calendar
+export const MOCK_CALENDARS: User[] = [
+  {
+    id: 'cal_001',
+    calendarId: 'primary',
+    name: 'Agenda Pessoal',
+    email: 'admin@exemplo.com',
+    phone: '',
+    password: 'pass_pessoal'
+  },
+  {
+    id: 'cal_002',
+    calendarId: 'dr_fernando_cal_id',
+    name: 'Dr. Fernando Cinagava',
+    email: 'fernando@clinica.com',
+    phone: '',
+    password: 'pass_fernando'
+  },
+  {
+    id: 'cal_003',
+    calendarId: 'sala_procedimentos_id',
+    name: 'Sala de Procedimentos',
+    email: 'sala1@clinica.com',
+    phone: '',
+    password: 'pass_sala01'
+  }
+];
 
 const today = new Date();
 const tomorrow = new Date(today);

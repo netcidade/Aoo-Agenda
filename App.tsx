@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { User, Appointment, AppointmentStatus } from './types';
-import { AVAILABLE_SERVICES, INITIAL_APPOINTMENTS } from './constants';
+import { AVAILABLE_SERVICES, INITIAL_APPOINTMENTS, MOCK_CALENDARS } from './constants';
 import { AppointmentCard } from './components/AppointmentCard';
 import { BookingForm } from './components/BookingForm';
 import { AIAssistant } from './components/AIAssistant';
 import { Button } from './components/Button';
-import { CalendarDays, LogOut, Plus, Filter, X, RefreshCw, CheckCheck, AlertCircle, UserCircle, Key } from 'lucide-react';
-import { initGoogleServices, handleAuthClick, listUpcomingEvents, createCalendarEvent, handleSignOut, listAllCalendars } from './services/calendarService';
+import { CalendarDays, LogOut, Plus, Filter, X, RefreshCw, CheckCheck, AlertCircle, UserCircle, Key, Info, Copy, ShieldCheck } from 'lucide-react';
+import { initGoogleServices, handleAuthClick, listUpcomingEvents, createCalendarEvent, listAllCalendars } from './services/calendarService';
 
 const App: React.FC = () => {
   // State management
   const [user, setUser] = useState<User | null>(null);
-  const [foundAccounts, setFoundAccounts] = useState<User[]>([]); // Contas encontradas via Google
+  const [foundAccounts, setFoundAccounts] = useState<User[]>([]); 
   const [appointments, setAppointments] = useState<Appointment[]>(INITIAL_APPOINTMENTS);
   const [view, setView] = useState<'dashboard' | 'booking'>('dashboard');
   
@@ -20,24 +20,37 @@ const App: React.FC = () => {
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
 
   // Filter States
   const [dateFilter, setDateFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [serviceFilter, setServiceFilter] = useState<string>('all');
 
+  // Origin for Debugging
+  const [currentOrigin, setCurrentOrigin] = useState('');
+
   // Initialize Google API
   useEffect(() => {
+    // Pegar URL segura para exibir no painel de ajuda
+    if (typeof window !== 'undefined') {
+        setCurrentOrigin(window.location.origin);
+    }
+    
     const checkGoogle = setInterval(() => {
       if (window.google && window.gapi) {
         initGoogleServices(() => setIsCalendarReady(true));
         clearInterval(checkGoogle);
       }
     }, 500);
+    
+    // Timeout para parar de tentar se a internet estiver lenta ou bloqueada
+    setTimeout(() => clearInterval(checkGoogle), 5000);
+
     return () => clearInterval(checkGoogle);
   }, []);
 
-  // Effect para buscar eventos quando o usuário for definido (logado) e tiver um calendarId
+  // Effect para buscar eventos quando o usuário for definido
   useEffect(() => {
     if (user && user.calendarId && isCalendarConnected) {
       refreshCalendarEvents(user.calendarId);
@@ -48,8 +61,12 @@ const App: React.FC = () => {
     setUser(null);
     setView('dashboard');
     clearFilters();
-    // Não desconectamos do Google totalmente para permitir trocar de agenda sem re-autenticar
-    // Se quisesse logout total: handleSignOut(); setIsCalendarConnected(false); setFoundAccounts([]);
+    // Se estiver em modo demo, reseta tudo ao sair
+    if (isDemoMode) {
+        setIsDemoMode(false);
+        setIsCalendarConnected(false);
+        setFoundAccounts([]);
+    }
   };
 
   const handleConnectGoogle = async () => {
@@ -57,11 +74,24 @@ const App: React.FC = () => {
     try {
       await handleAuthClick();
       setIsCalendarConnected(true);
+      setIsDemoMode(false);
       await scanCalendars();
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setSyncError("Erro ao conectar. Verifique o Client ID ou as permissões.");
+      const errorMsg = error?.result?.error?.message || error?.message || JSON.stringify(error);
+      setSyncError(`Erro ao conectar com Google. Detalhes: ${errorMsg}`);
     }
+  };
+
+  const handleSimulateConnection = () => {
+    setIsSyncing(true);
+    setSyncError(null);
+    setTimeout(() => {
+        setIsCalendarConnected(true);
+        setIsDemoMode(true);
+        setFoundAccounts(MOCK_CALENDARS); // Usa os dados falsos do constants.ts
+        setIsSyncing(false);
+    }, 1500);
   };
 
   const scanCalendars = async () => {
@@ -71,7 +101,7 @@ const App: React.FC = () => {
       setFoundAccounts(calendars);
     } catch (error) {
       console.error("Failed to list calendars", error);
-      setSyncError("Não foi possível listar as agendas.");
+      setSyncError("Não foi possível listar as agendas reais. Tente o modo Simulação.");
     } finally {
       setIsSyncing(false);
     }
@@ -82,15 +112,27 @@ const App: React.FC = () => {
   };
 
   const refreshCalendarEvents = async (calendarId: string) => {
-    if (!isCalendarConnected) return;
     setIsSyncing(true);
     try {
-      const googleEvents = await listUpcomingEvents(AVAILABLE_SERVICES, calendarId);
-      setAppointments(googleEvents);
+      if (isDemoMode) {
+          // Simula delay de rede
+          setTimeout(() => {
+              // Retorna eventos falsos levemente modificados para parecer que vieram daquela agenda
+              const mockEvents = INITIAL_APPOINTMENTS.map(a => ({
+                  ...a, 
+                  notes: `Evento simulado da agenda: ${calendarId}`
+              }));
+              setAppointments(mockEvents);
+              setIsSyncing(false);
+          }, 800);
+      } else {
+        const googleEvents = await listUpcomingEvents(AVAILABLE_SERVICES, calendarId);
+        setAppointments(googleEvents);
+        setIsSyncing(false);
+      }
     } catch (error) {
       console.error("Failed to sync", error);
-      setSyncError("Erro ao sincronizar eventos desta agenda.");
-    } finally {
+      setSyncError("Erro ao sincronizar eventos.");
       setIsSyncing(false);
     }
   };
@@ -114,12 +156,19 @@ const App: React.FC = () => {
     if (isCalendarConnected && user?.calendarId) {
       const service = AVAILABLE_SERVICES.find(s => s.id === serviceId);
       if (service) {
+        setIsSyncing(true);
         try {
-          setIsSyncing(true);
-          newAppointment = await createCalendarEvent(newAppointment, service, user.calendarId);
+          if (!isDemoMode) {
+             newAppointment = await createCalendarEvent(newAppointment, service, user.calendarId);
+          } else {
+             // Simula criação
+             await new Promise(r => setTimeout(r, 1000));
+             newAppointment.status = AppointmentStatus.CONFIRMED;
+             newAppointment.notes += " (Simulação)";
+          }
         } catch (error) {
-          console.error("Error creating google event", error);
-          alert("Não foi possível salvar na Google Agenda, salvando localmente.");
+          console.error("Error creating event", error);
+          alert("Erro ao salvar. Salvando localmente.");
         } finally {
           setIsSyncing(false);
         }
@@ -162,15 +211,16 @@ const App: React.FC = () => {
               <CalendarDays className="w-8 h-8 text-brand-600" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900">Portal de Agendamento</h1>
-            <p className="text-gray-500 mt-2">Conecte sua conta Google para gerenciar agendas</p>
+            <p className="text-gray-500 mt-2">Gerencie múltiplas agendas em um só lugar</p>
           </div>
           
           <div className="space-y-6">
             {!isCalendarConnected ? (
-              <div className="text-center">
+              <div className="text-center space-y-4">
+                {/* Botão Oficial Google */}
                 {isCalendarReady ? (
-                  <Button onClick={handleConnectGoogle} className="w-full py-4 text-lg flex items-center justify-center gap-3">
-                    <svg className="w-6 h-6" viewBox="0 0 24 24">
+                  <Button onClick={handleConnectGoogle} className="w-full py-3 flex items-center justify-center gap-3 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 shadow-sm">
+                    <svg className="w-5 h-5" viewBox="0 0 24 24">
                       <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                       <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
                       <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.84z" />
@@ -179,14 +229,50 @@ const App: React.FC = () => {
                     Entrar com Google
                   </Button>
                 ) : (
-                  <div className="flex justify-center items-center gap-2 text-gray-500">
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    Carregando serviços...
+                  <div className="text-sm text-gray-400">Carregando API do Google...</div>
+                )}
+
+                <div className="relative flex py-2 items-center">
+                    <div className="flex-grow border-t border-gray-200"></div>
+                    <span className="flex-shrink-0 mx-4 text-gray-400 text-xs uppercase">Ou teste agora</span>
+                    <div className="flex-grow border-t border-gray-200"></div>
+                </div>
+
+                {/* Botão de Simulação (Salva Vidas) */}
+                <Button onClick={handleSimulateConnection} variant="primary" fullWidth className="py-3 bg-brand-600 hover:bg-brand-700 text-white">
+                    <ShieldCheck className="w-5 h-5 mr-2" />
+                    Simular Sincronização (Demo)
+                </Button>
+                <p className="text-xs text-gray-500 px-4">
+                    Use o modo Demo se tiver problemas com a autenticação do Google neste ambiente de preview.
+                </p>
+
+                {syncError && (
+                  <div className="mt-4 text-left p-3 rounded-lg bg-red-50 border border-red-100">
+                      <div className="flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
+                          <p className="text-sm text-red-700">{syncError}</p>
+                      </div>
                   </div>
                 )}
-                {syncError && (
-                  <p className="mt-4 text-red-600 bg-red-50 p-3 rounded-lg text-sm">{syncError}</p>
-                )}
+
+                {/* Caixa de Ajuda para Configuração Real */}
+                <div className="mt-6 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-left">
+                   <div className="flex items-center gap-2 mb-1">
+                      <Info className="w-4 h-4 text-yellow-600" />
+                      <span className="text-xs font-bold text-yellow-800">Para Login Real (Google Cloud)</span>
+                   </div>
+                   <p className="text-[10px] text-yellow-700 mb-2 leading-tight">
+                     Se usar o botão "Google", adicione esta URL em <strong>Origens JavaScript</strong> no Console:
+                   </p>
+                   <div className="flex items-center justify-between bg-white border border-yellow-200 p-1.5 rounded text-xs text-gray-600 font-mono">
+                     <span className="truncate">{currentOrigin}</span>
+                     <button onClick={() => navigator.clipboard.writeText(currentOrigin)} className="text-yellow-600 hover:text-yellow-800 ml-2">
+                       <Copy className="w-3 h-3" />
+                     </button>
+                   </div>
+                </div>
+
               </div>
             ) : (
               <div className="space-y-4 animate-in fade-in">
@@ -194,33 +280,43 @@ const App: React.FC = () => {
                     <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">
                       Contas Encontradas ({foundAccounts.length})
                     </h3>
-                    <button onClick={scanCalendars} className="text-brand-600 text-xs hover:underline flex items-center gap-1">
+                    <button onClick={isDemoMode ? handleSimulateConnection : scanCalendars} className="text-brand-600 text-xs hover:underline flex items-center gap-1">
                        <RefreshCw className="w-3 h-3" /> Atualizar
                     </button>
                  </div>
                  
                  {isSyncing ? (
-                    <div className="py-8 text-center text-gray-500">Buscando agendas...</div>
+                    <div className="py-12 flex flex-col items-center justify-center text-gray-500 gap-3">
+                        <RefreshCw className="w-6 h-6 animate-spin text-brand-500" />
+                        <span className="text-sm">Buscando agendas...</span>
+                    </div>
                  ) : (
                    <div className="grid gap-3 max-h-[300px] overflow-y-auto">
                      {foundAccounts.map(account => (
                        <button
                          key={account.id}
                          onClick={() => handleSelectAccount(account)}
-                         className="flex items-center justify-between p-4 rounded-xl border border-gray-200 hover:border-brand-500 hover:bg-brand-50 transition-all bg-white group text-left w-full"
+                         className="flex items-center justify-between p-4 rounded-xl border border-gray-200 hover:border-brand-500 hover:bg-brand-50 transition-all bg-white group text-left w-full shadow-sm"
                        >
                          <div className="flex items-center gap-3">
-                           <div className="bg-brand-100 p-2 rounded-full text-brand-600 group-hover:bg-brand-200">
+                           <div className="bg-brand-100 p-2.5 rounded-full text-brand-600 group-hover:bg-brand-200 group-hover:text-brand-700 transition-colors">
                              <UserCircle className="w-6 h-6" />
                            </div>
                            <div>
                              <p className="font-semibold text-gray-900">{account.name}</p>
-                             <p className="text-xs text-gray-500">ID: {account.id.substring(0, 15)}...</p>
+                             <p className="text-xs text-gray-500">
+                                {isDemoMode ? 'Agenda Virtual (Demo)' : `ID: ${account.id.substring(0, 15)}...`}
+                             </p>
                            </div>
                          </div>
-                         <div className="text-xs text-gray-400 flex items-center gap-1">
-                            <Key className="w-3 h-3" />
-                            <span>{account.password}</span>
+                         <div className="text-right">
+                             <div className="text-xs text-gray-400 flex items-center justify-end gap-1 mb-1">
+                                <Key className="w-3 h-3" />
+                                <span className="font-mono text-[10px]">{account.password}</span>
+                             </div>
+                             <span className="text-[10px] font-medium text-brand-600 bg-brand-50 px-2 py-0.5 rounded-full">
+                                Acessar
+                             </span>
                          </div>
                        </button>
                      ))}
@@ -228,10 +324,12 @@ const App: React.FC = () => {
                  )}
                  
                  {foundAccounts.length === 0 && !isSyncing && (
-                   <p className="text-center text-gray-500 italic">Nenhuma agenda encontrada.</p>
+                   <p className="text-center text-gray-500 italic py-4">
+                       Nenhuma agenda encontrada. {isDemoMode ? 'Tente novamente.' : 'Verifique se a conta Google tem agendas criadas.'}
+                   </p>
                  )}
 
-                 <Button variant="ghost" fullWidth onClick={() => { setIsCalendarConnected(false); setFoundAccounts([]); }} className="mt-4">
+                 <Button variant="ghost" fullWidth onClick={() => { setIsCalendarConnected(false); setFoundAccounts([]); setIsDemoMode(false); }} className="mt-4">
                    Cancelar
                  </Button>
               </div>
@@ -246,21 +344,27 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-50 pb-20 md:pb-10">
       
       {/* Top Navigation */}
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-10">
+      <nav className="bg-white border-b border-gray-200 sticky top-0 z-10 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center gap-2">
               <div className="bg-brand-600 p-1.5 rounded-lg">
                 <CalendarDays className="w-5 h-5 text-white" />
               </div>
-              <span className="font-bold text-xl text-gray-900 tracking-tight">MinhaAgenda</span>
+              <span className="font-bold text-xl text-gray-900 tracking-tight hidden sm:block">MinhaAgenda</span>
+              <span className="font-bold text-xl text-gray-900 tracking-tight sm:hidden">Agenda</span>
             </div>
             <div className="flex items-center gap-4">
-              <div className="text-right hidden sm:block">
+              <div className="text-right flex flex-col items-end">
                  <p className="text-sm font-semibold text-gray-900">{user.name}</p>
-                 <p className="text-xs text-gray-500 truncate max-w-[150px]">{user.calendarId}</p>
+                 <div className="flex items-center gap-1">
+                    <span className={`w-2 h-2 rounded-full ${isDemoMode ? 'bg-orange-400' : 'bg-green-500'}`}></span>
+                    <p className="text-xs text-gray-500 truncate max-w-[100px] sm:max-w-[150px]">
+                        {isDemoMode ? 'Modo Demo' : 'Conectado'}
+                    </p>
+                 </div>
               </div>
-              <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-gray-100 rounded-full" title="Sair da Conta">
+              <button onClick={handleLogout} className="text-gray-400 hover:text-red-500 transition-colors p-2 hover:bg-red-50 rounded-full" title="Sair da Conta">
                 <LogOut className="w-5 h-5" />
               </button>
             </div>
@@ -278,20 +382,20 @@ const App: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Painel da Agenda</h1>
-                <p className="text-gray-500">Visualizando eventos de: <strong>{user.name}</strong></p>
+                <p className="text-gray-500">Gerenciando: <strong className="text-gray-800">{user.name}</strong></p>
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                  <Button 
                     variant="outline" 
                     onClick={() => refreshCalendarEvents(user.calendarId || 'primary')} 
                     disabled={isSyncing} 
-                    className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100"
+                    className="bg-white"
                   >
-                    {isSyncing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <CheckCheck className="w-4 h-4 mr-2" />}
-                    {isSyncing ? 'Sincronizando...' : 'Sincronizado'}
+                    {isSyncing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin text-brand-600" /> : <CheckCheck className="w-4 h-4 mr-2 text-green-600" />}
+                    {isSyncing ? 'Sincronizando...' : 'Atualizar Eventos'}
                  </Button>
                 
-                <Button onClick={() => setView('booking')} className="shadow-lg shadow-brand-200">
+                <Button onClick={() => setView('booking')} className="shadow-md shadow-brand-200 hover:shadow-lg transition-shadow">
                   <Plus className="w-5 h-5 mr-2" />
                   Novo Agendamento
                 </Button>
