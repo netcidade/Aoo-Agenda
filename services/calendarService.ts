@@ -7,6 +7,8 @@ import { Appointment, AppointmentStatus, Service, GoogleCalendarEvent, User } fr
 // 2. Habilite a "Google Calendar API"
 // 3. Crie credenciais do tipo "API KEY" (Chave de API)
 // 4. Cole a API Key abaixo:
+// ATENÇÃO: Uma API Key começa geralmente com "AIza...". 
+// Se o seu código termina em "apps.googleusercontent.com", é um CLIENT ID (errado).
 
 const API_KEY: string = '479538977890-ak3thanls2coa7loijq7en12s4d152mp.apps.googleusercontent.com';
 
@@ -22,6 +24,15 @@ declare global {
 let gapiInited = false;
 
 export const initGoogleServices = (callback: () => void) => {
+  // Verificação de segurança para evitar erro 400 se o usuário colou Client ID
+  if (API_KEY.includes('apps.googleusercontent.com')) {
+    console.warn("⚠️ ALERTA DE CONFIGURAÇÃO: Você colou um Client ID na variável API_KEY.");
+    console.warn("Para o modo público funcionar, gere uma 'Chave de API' no Google Cloud Console (começa com AIza).");
+    console.warn("O App continuará em modo de simulação.");
+    callback();
+    return;
+  }
+
   if (window.gapi) {
     window.gapi.load('client', async () => {
       try {
@@ -30,16 +41,19 @@ export const initGoogleServices = (callback: () => void) => {
           discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'],
         });
         gapiInited = true;
+        console.log("GAPI inicializado com sucesso.");
         callback();
       } catch (error) {
-        console.error("Erro ao inicializar GAPI:", error);
+        // Correção do erro [object Object]: Convertendo para string legível
+        console.error("Erro ao inicializar GAPI:", JSON.stringify(error, null, 2));
         // Tenta continuar mesmo com erro para permitir modo offline/demo
         callback();
       }
     });
   } else {
     // Fallback se o script não carregou
-    console.warn("Script gapi não encontrado");
+    console.warn("Script gapi não encontrado no index.html");
+    callback();
   }
 };
 
@@ -66,8 +80,9 @@ const convertGoogleEventToAppointment = (event: GoogleCalendarEvent, services: S
 };
 
 export const listUpcomingEvents = async (services: Service[], calendarId: string): Promise<Appointment[]> => {
-  if (!gapiInited || API_KEY.includes('479538977890-ak3thanls2coa7loijq7en12s4d152mp.apps.googleusercontent.com')) {
-    console.warn("API Google não inicializada ou Key inválida. Retornando array vazio.");
+  // Se GAPI não iniciou ou a chave parece inválida/padrão, retorna vazio para não quebrar
+  if (!gapiInited || API_KEY.includes('apps.googleusercontent.com')) {
+    console.warn("API Google não inicializada corretamente. Retornando lista vazia (Modo Offline).");
     return [];
   }
 
@@ -86,7 +101,7 @@ export const listUpcomingEvents = async (services: Service[], calendarId: string
 
     return events.map(e => convertGoogleEventToAppointment(e, services));
   } catch (err: any) {
-    console.error('Erro ao buscar eventos:', err);
+    console.error('Erro ao buscar eventos:', JSON.stringify(err, null, 2));
     if (err.status === 404) {
         console.error("Agenda não encontrada. Verifique se o ID está correto e se a agenda é PÚBLICA.");
     }

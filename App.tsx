@@ -5,7 +5,7 @@ import { AppointmentCard } from './components/AppointmentCard';
 import { BookingForm } from './components/BookingForm';
 import { AIAssistant } from './components/AIAssistant';
 import { Button } from './components/Button';
-import { CalendarDays, LogOut, Plus, Filter, X, RefreshCw, CheckCheck, AlertCircle, UserCircle, MapPin, Phone } from 'lucide-react';
+import { CalendarDays, LogOut, Plus, Filter, X, RefreshCw, CheckCheck, AlertCircle, UserCircle, MapPin, Phone, GripVertical } from 'lucide-react';
 import { initGoogleServices, listUpcomingEvents, createCalendarEvent } from './services/calendarService';
 
 const App: React.FC = () => {
@@ -13,6 +13,9 @@ const App: React.FC = () => {
   const [selectedCalendarUser, setSelectedCalendarUser] = useState<User | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [view, setView] = useState<'dashboard' | 'booking'>('dashboard');
+  
+  // Drag and Drop State
+  const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
   
   // Google Calendar Integration State
   const [isCalendarReady, setIsCalendarReady] = useState(false);
@@ -26,12 +29,14 @@ const App: React.FC = () => {
 
   // Initialize Google API (API Key Only)
   useEffect(() => {
+    // Garante que o app carregue visualmente mesmo se a API falhar ou demorar
     initGoogleServices(() => setIsCalendarReady(true));
   }, []);
 
   // Effect para buscar eventos quando uma agenda é selecionada
   useEffect(() => {
-    if (selectedCalendarUser && isCalendarReady) {
+    if (selectedCalendarUser) {
+      // Se a API estiver pronta, carrega. Se não, tenta carregar (modo offline vai retornar vazio e logar erro)
       refreshCalendarEvents(selectedCalendarUser.calendarId || '');
     }
   }, [selectedCalendarUser, isCalendarReady]);
@@ -48,19 +53,57 @@ const App: React.FC = () => {
     setSyncError(null);
   };
 
+  // Função auxiliar para aplicar a ordem salva
+  const applySavedOrder = (events: Appointment[]): Appointment[] => {
+    const savedOrderJson = localStorage.getItem('appointmentsOrder');
+    if (!savedOrderJson) return events;
+
+    try {
+      const savedOrderIds: string[] = JSON.parse(savedOrderJson);
+      
+      // Cria um mapa para acesso rápido ao índice
+      const orderMap = new Map(savedOrderIds.map((id, index) => [id, index]));
+
+      return [...events].sort((a, b) => {
+        const indexA = orderMap.get(a.id);
+        const indexB = orderMap.get(b.id);
+
+        // Se ambos têm ordem salva, usa ela
+        if (indexA !== undefined && indexB !== undefined) {
+          return indexA - indexB;
+        }
+        
+        // Se apenas um tem ordem salva, prioriza ele (ou coloca no final, depende da preferencia)
+        // Aqui: Itens sem ordem salva ficam no final, ordenados por data original
+        if (indexA !== undefined) return -1;
+        if (indexB !== undefined) return 1;
+
+        return 0; // Mantém ordem original (que já vem por data do Google)
+      });
+    } catch (e) {
+      console.error("Erro ao ler ordem salva", e);
+      return events;
+    }
+  };
+
   const refreshCalendarEvents = async (calendarId: string) => {
     setIsSyncing(true);
     setSyncError(null);
     try {
         const googleEvents = await listUpcomingEvents(AVAILABLE_SERVICES, calendarId);
-        setAppointments(googleEvents);
+        // Aplica a ordenação salva sobre os dados novos
+        const orderedEvents = applySavedOrder(googleEvents);
+        setAppointments(orderedEvents);
     } catch (error: any) {
-      console.error("Failed to sync", error);
+      // Erro é logado no console pelo service
       let msg = "Erro ao carregar agenda.";
+      // Tenta extrair mensagem útil
       if (error?.result?.error?.code === 404) {
           msg = "Agenda não encontrada ou privada. Verifique o ID no arquivo constants.ts.";
       } else if (error?.result?.error?.code === 403) {
           msg = "Acesso negado. A API Key pode estar incorreta ou a agenda não é pública.";
+      } else if (error?.result?.error?.message) {
+          msg = `Erro Google: ${error.result.error.message}`;
       }
       setSyncError(msg);
     } finally {
@@ -94,9 +137,10 @@ const App: React.FC = () => {
         await createCalendarEvent(newAppointment, service!, selectedCalendarUser?.calendarId || '');
         
         // Adiciona visualmente
-        setAppointments(prev => [...prev, newAppointment].sort((a, b) => 
-          new Date(a.date).getTime() - new Date(b.date).getTime()
-        ));
+        const updatedList = [...appointments, newAppointment];
+        // Não reordenamos automaticamente por data aqui para respeitar a ordem manual se existir,
+        // mas novos itens vão para o final por padrão da array
+        setAppointments(updatedList);
         
         alert("✅ Solicitação de agendamento enviada!\n\nComo este é um portal público, sua solicitação foi registrada e nossa equipe entrará em contato para confirmar.");
         
@@ -107,6 +151,59 @@ const App: React.FC = () => {
     } finally {
         setIsSyncing(false);
     }
+  };
+
+  // Drag and Drop Handlers
+  const handleDragStart = (index: number) => {
+    setDraggedItemIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault(); // Necessário para permitir o drop
+  };
+
+  const handleDrop = (targetIndex: number) => {
+    if (draggedItemIndex === null || draggedItemIndex === targetIndex) return;
+
+    // Copia a lista atual de itens VISÍVEIS (upcomingAppointments)
+    // Nota: Reordenamos apenas o array visualizado e salvamos os IDs
+    const updatedList = [...upcomingAppointments];
+    const itemToMove = updatedList[draggedItemIndex];
+    
+    // Remove do index antigo
+    updatedList.splice(draggedItemIndex, 1);
+    // Insere no novo index
+    updatedList.splice(targetIndex, 0, itemToMove);
+
+    // Precisamos atualizar o state principal 'appointments'
+    // A estratégia mais segura é criar um novo array de appointments baseado na nova ordem visual
+    // E concatenar os itens que foram filtrados para fora (se houver, embora DnD esteja desabilitado com filtro)
+    
+    // Como desabilitamos DnD quando há filtros, updatedList contém TUDO que é relevante.
+    // Mas 'upcomingAppointments' filtra passado. Precisamos cuidar para não perder histórico.
+    
+    // 1. Pega IDs da nova ordem
+    const newOrderIds = updatedList.map(a => a.id);
+    
+    // 2. Salva no localStorage
+    localStorage.setItem('appointmentsOrder', JSON.stringify(newOrderIds));
+    
+    // 3. Atualiza o estado
+    // Reconstruímos o array appointments respeitando a nova ordem visual para os itens presentes
+    // e mantendo os outros (histórico) onde estavam ou no final.
+    const newAppointmentsState = [...appointments].sort((a, b) => {
+        const indexA = newOrderIds.indexOf(a.id);
+        const indexB = newOrderIds.indexOf(b.id);
+        
+        if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+        if (indexA !== -1) return -1;
+        if (indexB !== -1) return 1;
+        // Se nenhum está na lista manipulada (ex: evento passado), mantém ordem original de data
+        return new Date(a.date).getTime() - new Date(b.date).getTime();
+    });
+
+    setAppointments(newAppointmentsState);
+    setDraggedItemIndex(null);
   };
 
   // Filter Logic
@@ -244,7 +341,11 @@ const App: React.FC = () => {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Horários Disponíveis</h1>
-                <p className="text-gray-500 text-sm">Consulte os horários livres abaixo.</p>
+                <p className="text-gray-500 text-sm">
+                  {isFiltering 
+                    ? 'Filtros ativos. Reordenação desabilitada.' 
+                    : 'Arraste os cards para reorganizar a visualização (salvo automaticamente).'}
+                </p>
               </div>
               <div className="flex gap-3">
                  <Button 
@@ -342,7 +443,7 @@ const App: React.FC = () => {
               </h2>
               {upcomingAppointments.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {upcomingAppointments.map(apt => {
+                  {upcomingAppointments.map((apt, index) => {
                     // Tenta encontrar um serviço correspondente ou cria um genérico com o título do Google
                     const s = AVAILABLE_SERVICES.find(srv => srv.id === apt.serviceId) || {
                         id: 'ext', 
@@ -351,7 +452,33 @@ const App: React.FC = () => {
                         price: 0, 
                         description: 'Agendamento sincronizado'
                     };
-                    return <AppointmentCard key={apt.id} appointment={apt} service={s} />;
+                    
+                    const isDraggable = !isFiltering;
+                    const isDragging = draggedItemIndex === index;
+
+                    return (
+                      <div 
+                        key={apt.id}
+                        draggable={isDraggable}
+                        onDragStart={() => handleDragStart(index)}
+                        onDragOver={handleDragOver}
+                        onDrop={() => handleDrop(index)}
+                        className={`transition-all duration-200 ${
+                          isDraggable ? 'cursor-grab active:cursor-grabbing' : ''
+                        } ${isDragging ? 'opacity-40 scale-95 border-2 border-brand-500 rounded-xl border-dashed' : ''}`}
+                      >
+                         {/* Drag Handle Overlay (Visible on Hover if Draggable) */}
+                         {isDraggable && (
+                           <div className="group relative h-full">
+                              <AppointmentCard appointment={apt} service={s} />
+                              <div className="absolute top-2 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-100 p-1 rounded-md shadow-sm pointer-events-none z-10">
+                                <GripVertical className="w-4 h-4 text-gray-400" />
+                              </div>
+                           </div>
+                         )}
+                         {!isDraggable && <AppointmentCard appointment={apt} service={s} />}
+                      </div>
+                    );
                   })}
                 </div>
               ) : (

@@ -1,7 +1,22 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { Appointment, Service, User } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safe initialization for browser environments
+const getApiKey = () => {
+  try {
+    // @ts-ignore
+    return process?.env?.API_KEY || '';
+  } catch {
+    return '';
+  }
+};
+
+const apiKey = getApiKey();
+let ai: GoogleGenAI | null = null;
+
+if (apiKey) {
+  ai = new GoogleGenAI({ apiKey });
+}
 
 export const generateAIResponse = async (
   userMessage: string,
@@ -9,6 +24,10 @@ export const generateAIResponse = async (
   appointments: Appointment[],
   services: Service[]
 ): Promise<string> => {
+  if (!ai) {
+    return "O assistente de IA não está configurado. Verifique a API Key no arquivo .env ou no serviço.";
+  }
+
   // Prepare context data
   const contextData = {
     user: user.name,
