@@ -1,20 +1,27 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Minha Agenda - Integração Google Calendar
 
-# Run and deploy your AI Studio app
+Este projeto é um portal de agendamento integrado com Google Calendar e IA Gemini.
 
-This contains everything you need to run your app locally.
+## Como rodar no seu computador (VS Code)
 
-View your app in AI Studio: https://ai.studio/apps/drive/16n-s1RWxNpzw3D6F5I8eW-ieLaCTvs4H
+1. Certifique-se de ter o **Node.js** instalado.
+2. Abra esta pasta no VS Code.
+3. Abra o terminal e rode:
+   ```bash
+   npm install
+   ```
+4. Inicie o projeto:
+   ```bash
+   npm run dev
+   ```
+5. O site abrirá em `http://localhost:5173`.
 
-## Run Locally
+## Configuração do Google Cloud
 
-**Prerequisites:**  Node.js
+Para o login funcionar, você precisa autorizar o endereço local:
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Acesse o Google Cloud Console > APIs & Services > Credentials.
+2. Edite seu **OAuth 2.0 Client ID**.
+3. Em **Authorized JavaScript origins**, adicione:
+   - `http://localhost:5173`
+4. Salve e aguarde alguns minutos.
