@@ -18,7 +18,8 @@ export interface Appointment {
   serviceId: string;
   date: string; // ISO String
   status: AppointmentStatus;
-  notes?: string;
+  title?: string; // Título do evento (Google Summary)
+  notes?: string; // Descrição do evento
   googleEventId?: string; // Link to Google Calendar
 }
 

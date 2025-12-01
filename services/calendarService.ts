@@ -126,10 +126,12 @@ const convertGoogleEventToAppointment = (event: GoogleCalendarEvent, services: S
   return {
     id: event.id,
     googleEventId: event.id,
-    serviceId: matchedService ? matchedService.id : 'external', 
+    serviceId: matchedService ? matchedService.id : 'external',
+    // Aqui capturamos o Título e a Descrição originais do Google
+    title: event.summary || 'Evento sem título',
     date: event.start.dateTime || new Date().toISOString(),
     status: status,
-    notes: event.description || 'Sincronizado do Google Agenda'
+    notes: event.description || ''
   };
 };
 
@@ -185,6 +187,8 @@ export const createCalendarEvent = async (appointment: Appointment, service: Ser
       ...appointment,
       id: googleEvent.id,
       googleEventId: googleEvent.id,
+      title: googleEvent.summary,
+      notes: googleEvent.description,
       status: AppointmentStatus.CONFIRMED
     };
   } catch (err) {

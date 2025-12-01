@@ -119,7 +119,8 @@ const App: React.FC = () => {
           setTimeout(() => {
               // Retorna eventos falsos levemente modificados para parecer que vieram daquela agenda
               const mockEvents = INITIAL_APPOINTMENTS.map(a => ({
-                  ...a, 
+                  ...a,
+                  title: AVAILABLE_SERVICES.find(s => s.id === a.serviceId)?.name || 'Consulta', 
                   notes: `Evento simulado da agenda: ${calendarId}`
               }));
               setAppointments(mockEvents);
@@ -145,16 +146,18 @@ const App: React.FC = () => {
 
   // Booking Logic
   const handleNewBooking = async (serviceId: string, date: Date) => {
+    const service = AVAILABLE_SERVICES.find(s => s.id === serviceId);
+    
     let newAppointment: Appointment = {
       id: Math.random().toString(36).substr(2, 9),
       serviceId,
+      title: service ? `Agendamento: ${service.name}` : 'Novo Agendamento',
       date: date.toISOString(),
       status: AppointmentStatus.PENDING,
       notes: 'Agendado via Web App'
     };
 
     if (isCalendarConnected && user?.calendarId) {
-      const service = AVAILABLE_SERVICES.find(s => s.id === serviceId);
       if (service) {
         setIsSyncing(true);
         try {
@@ -486,8 +489,13 @@ const App: React.FC = () => {
               {upcomingAppointments.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {upcomingAppointments.map(apt => {
+                    // Create a display service object using the Title from Google if available
                     const s = AVAILABLE_SERVICES.find(srv => srv.id === apt.serviceId) || {
-                        id: 'ext', name: apt.notes?.includes('Agendamento:') ? apt.notes.split('\n')[0] : 'Evento Google', durationMinutes: 60, price: 0, description: 'Agendamento importado'
+                        id: 'ext', 
+                        name: apt.title || 'Evento Google', // Use the title captured
+                        durationMinutes: 60, 
+                        price: 0, 
+                        description: 'Agendamento importado'
                     };
                     return <AppointmentCard key={apt.id} appointment={apt} service={s} />;
                   })}
@@ -517,7 +525,11 @@ const App: React.FC = () => {
                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-75">
                     {historyAppointments.map(apt => {
                       const s = AVAILABLE_SERVICES.find(srv => srv.id === apt.serviceId) || {
-                        id: 'ext', name: 'Evento Passado', durationMinutes: 60, price: 0, description: 'Agendamento importado'
+                        id: 'ext', 
+                        name: apt.title || 'Evento Passado', // Use the title captured
+                        durationMinutes: 60, 
+                        price: 0, 
+                        description: 'Agendamento importado'
                       };
                       return <AppointmentCard key={apt.id} appointment={apt} service={s} />;
                     })}
