@@ -1,0 +1,5 @@
+{
+  "name": "MinhaAgenda",
+  "description": "Um portal moderno para clientes visualizarem agendamentos, marcarem novos horários e tirarem dúvidas com um assistente de IA.",
+  "requestFramePermissions": []
+}
