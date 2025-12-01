@@ -31,57 +31,40 @@ export const AVAILABLE_SERVICES: Service[] = [
   }
 ];
 
-// Dados para simular a resposta da API do Google Calendar
-export const MOCK_CALENDARS: User[] = [
+// ==================================================================================
+// 🏥 CONFIGURAÇÃO DAS AGENDAS DA CLÍNICA
+// ==================================================================================
+// Coloque aqui os IDs das Agendas do Google que você quer que apareçam no portal.
+// IMPORTANTE: Essas agendas devem estar configuradas como "Públicas" no Google Calendar.
+// ==================================================================================
+
+export const CLINIC_CALENDARS: User[] = [
   {
     id: 'cal_001',
-    calendarId: 'primary',
-    name: 'Agenda Pessoal',
-    email: 'admin@exemplo.com',
-    phone: '',
-    password: 'pass_pessoal'
+    calendarId: 'c_1887...group.calendar.google.com', // Substitua pelo ID real da agenda pública
+    name: 'Dr. Fernando Cinagava',
+    email: 'fernando@clinica.com',
+    phone: '(11) 99999-9999',
+    password: '' // Não necessário para acesso público
   },
   {
     id: 'cal_002',
-    calendarId: 'dr_fernando_cal_id',
-    name: 'Dr. Fernando Cinagava',
-    email: 'fernando@clinica.com',
-    phone: '',
-    password: 'pass_fernando'
+    calendarId: 'primary', // 'primary' geralmente não funciona bem com API Key pública, prefira o ID completo
+    name: 'Agenda Geral / Recepção',
+    email: 'contato@clinica.com',
+    phone: '(11) 3333-3333',
+    password: ''
   },
   {
     id: 'cal_003',
-    calendarId: 'sala_procedimentos_id',
-    name: 'Sala de Procedimentos',
-    email: 'sala1@clinica.com',
+    calendarId: 'en.brazilian#holiday@group.v.calendar.google.com', // Exemplo de calendário público real (Feriados) para teste
+    name: 'Feriados (Teste de Conexão)',
+    email: 'google@google.com',
     phone: '',
-    password: 'pass_sala01'
+    password: ''
   }
 ];
 
+// Mantenha INITIAL_APPOINTMENTS vazio ou com dados mínimos, pois agora carregaremos da API
 const today = new Date();
-const tomorrow = new Date(today);
-tomorrow.setDate(tomorrow.getDate() + 1);
-const nextWeek = new Date(today);
-nextWeek.setDate(nextWeek.getDate() + 7);
-
-export const INITIAL_APPOINTMENTS: Appointment[] = [
-  {
-    id: 'a1',
-    serviceId: 's1',
-    date: new Date(today.setHours(14, 0, 0, 0)).toISOString(),
-    status: AppointmentStatus.CONFIRMED,
-  },
-  {
-    id: 'a2',
-    serviceId: 's3',
-    date: new Date(tomorrow.setHours(10, 30, 0, 0)).toISOString(),
-    status: AppointmentStatus.PENDING,
-  },
-  {
-    id: 'a3',
-    serviceId: 's2',
-    date: new Date(nextWeek.setHours(16, 0, 0, 0)).toISOString(),
-    status: AppointmentStatus.CONFIRMED,
-  }
-];
+export const INITIAL_APPOINTMENTS: Appointment[] = [];
